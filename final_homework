@@ -1,0 +1,274 @@
+#PK Assignment 2
+#Analyzing tweets
+
+#Importing tweets pulled from python, R was only returning 1 tweet from API
+
+tweets = read.csv('C:/Users/Mike/Documents/UNH/Grad School/DATA 902/kat_tweets.csv')
+
+# remove non alpha numeric characters 
+tweets$X0 <- iconv(tweets$X0, from = "UTF-8", to = "ASCII", sub = "")
+
+
+library(tm)
+library(wordcloud)
+#making a corpus of a vector source 
+review_corpus <- VCorpus(VectorSource(tweets$X0))
+#Cleaning corpus - pre_processing
+clean_corpus <- function(cleaned_corpus){
+  removeURL <- content_transformer(function(x) gsub("(f|ht)tp(s?)://\\S+", "", x, perl=T))
+  cleaned_corpus <- tm_map(cleaned_corpus, removeURL)
+  cleaned_corpus <- tm_map(cleaned_corpus, content_transformer(replace_abbreviation))
+  cleaned_corpus <- tm_map(cleaned_corpus, content_transformer(tolower))
+  cleaned_corpus <- tm_map(cleaned_corpus, removePunctuation)
+  cleaned_corpus <- tm_map(cleaned_corpus, removeNumbers)
+  cleaned_corpus <- tm_map(cleaned_corpus, removeWords, stopwords("english"))
+  # available stopwords
+  # stopwords::stopwords()
+  custom_stop_words <- c('just', 'like', 'alligrann', 'makkibessey')
+  cleaned_corpus <- tm_map(cleaned_corpus, removeWords, custom_stop_words)
+  #cleaned_corpus <- tm_map(cleaned_corpus, stemDocument,language = "english")
+  cleaned_corpus <- tm_map(cleaned_corpus, stripWhitespace)
+  return(cleaned_corpus)
+}
+
+cleaned_review_corpus <- clean_corpus(review_corpus)
+
+#Establishing Term Document Matrix
+TDM_reviews <- TermDocumentMatrix(cleaned_review_corpus)
+TDM_reviews_m <- as.matrix(TDM_reviews)
+
+
+# Term Frequency
+term_frequency <- rowSums(TDM_reviews_m)
+
+# Sort term_frequency in descending order
+term_frequency <- sort(term_frequency,dec=TRUE)
+
+#Word Cloud
+
+# Create word_freqs
+word_freqs <- data.frame(term = names(term_frequency), num = term_frequency)
+
+# Create a wordcloud for the values in word_freqs
+wordcloud(word_freqs$term, word_freqs$num,min.freq=5,random.order = FALSE, max.words=200,colors=brewer.pal(8, "Paired"))
+
+#bigrams
+
+library(RWeka)
+library(wordcloud)
+tokenizer <- function(x)
+  NGramTokenizer(x,Weka_control(min=2,max=2))
+
+bigram_tdm <- TermDocumentMatrix(cleaned_review_corpus,control = list(tokenize=tokenizer))
+bigram_tdm_m <- as.matrix(bigram_tdm)
+
+# Term Frequency
+term_frequency <- rowSums(bigram_tdm_m)
+
+# Sort term_frequency in descending order
+term_frequency <- sort(term_frequency,dec=TRUE)
+
+
+# Create word_freqs
+
+word_freqs <- data.frame(term = names(term_frequency), num = term_frequency)
+
+# Create a wordcloud for the values in word_freqs
+wordcloud(word_freqs$term, word_freqs$num,min.freq=5,random.order = FALSE, max.words=1000,colors=brewer.pal(8, "Paired"))
+
+
+#trigrams
+
+tokenizer <- function(x)
+  NGramTokenizer(x,Weka_control(min=3,max=3))
+
+trigram_tdm <- TermDocumentMatrix(cleaned_review_corpus,control = list(tokenize=tokenizer))
+trigram_tdm_m <- as.matrix(trigram_tdm)
+
+# Term Frequency
+term_frequency <- rowSums(trigram_tdm_m)
+# Sort term_frequency in descending order
+term_frequency <- sort(term_frequency,dec=TRUE)
+############Word Cloud
+
+# Create word_freqs
+word_freqs <- data.frame(term = names(term_frequency), num = term_frequency)
+head(word_freqs)
+
+wordcloud(word_freqs$term, word_freqs$num, max.words = 500, min.freq=1,scale=c(4,.5),random.order = FALSE,rot.per=.5,colors=brewer.pal(3, "Paired")) 
+
+
+#TF-IDF Word cloud
+
+terms <-DocumentTermMatrix(cleaned_review_corpus,control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+
+TDM_reviews_m <- as.matrix(terms)
+
+#Needed to rotate matrix 90 degrees, it was initialized incorrectly
+#This could be due to the normalization parameter
+test = t(TDM_reviews_m)
+
+# Term Frequency
+term_frequency <- rowSums(test)
+# Sort term_frequency in descending order
+term_frequency <- sort(term_frequency,dec=TRUE)
+
+
+#Word Cloud
+
+# Create word_freqs
+word_freqs <- data.frame(term = names(term_frequency), num = term_frequency)
+# Create a wordcloud for the values in word_freqs
+wordcloud(word_freqs$term, word_freqs$num,min.freq=5,random.order = FALSE, max.words=200,colors=brewer.pal(8, "Paired"))
+
+
+
+######################################################
+
+clean_corpus <- function(cleaned_corpus){
+  cleaned_corpus <- tm_map(cleaned_corpus, removeWords, stopwords("english"))
+  cleaned_corpus <- tm_map(cleaned_corpus, stripWhitespace)
+  return(cleaned_corpus)
+}
+
+library(tidytext)
+library(dplyr)
+library(tm)
+library(qdap)
+library(tibble)
+library(ggplot2)
+library(RWeka)
+library(wordcloud)
+library(lubridate)
+library(lexicon)
+library(tidytext)
+library(lubridate)
+library(gutenbergr)
+library(stringr)
+library(dplyr)
+library(radarchart)
+library(ggplot2)
+library(tidytext)
+library(gutenbergr)
+library(dplyr)
+library(tidyr)
+
+#Tidy TDM
+tweets$X0 <- iconv(tweets$X0, from = "UTF-8", to = "ASCII", sub = "")
+mytext_corpus <- VCorpus(VectorSource(tweets$X0))
+cleaned_mytext_corpus <- clean_corpus(mytext_corpus)
+TDM_mytext <- TermDocumentMatrix(cleaned_mytext_corpus)
+mytext_tidy <- tidy(TDM_mytext)
+
+# afinn
+afinn_lex <- get_sentiments("afinn")
+mytext_afinn_lex <- inner_join(mytext_tidy, afinn_lex, by = c("term" = "word"))
+mytext_afinn_lex$sentiment_value <- mytext_afinn_lex$score * mytext_afinn_lex$count
+afinn_aggdata <- aggregate(mytext_afinn_lex$sentiment_value, list(index = mytext_afinn_lex$document), sum)
+afinn_aggdata$index <- as.numeric(afinn_aggdata$index)
+colnames(afinn_aggdata) <- c("index","afinn_score")
+
+
+all_sentiment_data <- afinn_aggdata
+
+tidy_sentiment_data <- gather(all_sentiment_data, sentiment_dict, sentiment_score, -index)
+tidy_sentiment_data[is.na(tidy_sentiment_data)] <- 0
+
+ggplot(data = tidy_sentiment_data,
+       aes(x=index,y=sentiment_score,fill=sentiment_dict))+
+  geom_bar(stat="identity") + facet_grid(sentiment_dict~.)+theme_bw() + 
+  theme(legend.position = "none")+ggtitle("Kat Bessey Tweet Sentiment")
+
+
+mean(all_sentiment_data$afinn_score)
+#Average sentiment score is -0.1090366
+
+##########################################################
+
+#Compare Word cloud based on Sentiment
+
+#splitting words to posative and negative lists
+
+
+for(i in 1:20){
+  print(all_sentiment_data[which(all_sentiment_data$index == i),])
+}
+all_sentiment_data[which(all_sentiment_data$index == 10),]
+
+all_sentiment_data[1,]
+
+positive_indicies = list()
+negative_indicies = list()
+
+pos_counter = 1
+neg_counter = 1
+
+for(i in 1:2000){
+  if(polarity(tweets$X0[i])$all$polarity > 0){
+    positive_indicies[[pos_counter]] = i-1
+    pos_counter = pos_counter + 1
+  }else{
+    negative_indicies[[neg_counter]] = i-1
+    neg_counter = neg_counter + 1
+  }
+}
+
+#Extracting positive and negative tweet indicies from original tweet dataframe
+
+pos_tweets = tweets[is.element(tweets$X, positive_indicies),'X0']
+neg_tweets = tweets[is.element(tweets$X, negative_indicies),'X0']
+
+#Converting to single string
+
+pos_tweet_string = pos_tweets[1]
+for(tweets in 2:length(pos_tweets)){
+  pos_tweet_string = paste(pos_tweet_string,pos_tweets[tweets])
+}
+
+neg_tweet_string = neg_tweets[1]
+for(tweets in 2:length(neg_tweets)){
+  neg_tweet_string = paste(neg_tweet_string, neg_tweets[tweets])
+}
+
+
+review_pos = VCorpus(VectorSource(pos_tweet_string))
+review_neg = VCorpus(VectorSource(neg_tweet_string))
+clean_pos_text = clean_corpus(review_pos)
+clean_neg_text = clean_corpus(review_neg)
+
+both = c(clean_pos_text, clean_neg_text)
+
+tdm = TermDocumentMatrix((both))
+tdm = as.matrix(tdm)
+
+colnames(tdm) = c('Positive', 'Negative')
+
+
+comparison.cloud(tdm, random.order=FALSE,
+                  colors = c("#00B2FF", "red", "#FF0099", "#6600CC"),
+                  title.size=1.5, max.words=500)
+
+
+
+###############################################
+#Emotional Analysis
+
+
+review_corpus <- VCorpus(VectorSource(tweets$X0))
+cleaned_review_corpus <- clean_corpus(review_corpus)
+
+TDM_mytext <- TermDocumentMatrix(cleaned_mytext_corpus)
+mytext_tidy <- tidy(TDM_mytext)
+
+
+################NRC lexicon
+nrc_lex <- get_sentiments("nrc")
+story_nrc <- inner_join(mytext_tidy, nrc_lex, by = c("term" = "word"))
+story_nrc_noposneg <- story_nrc[!(story_nrc$sentiment %in% c("positive","negative")),]
+aggdata <- aggregate(story_nrc_noposneg$count, list(index = story_nrc_noposneg$sentiment), sum)
+chartJSRadar(aggdata)
+
+
+
+
+
